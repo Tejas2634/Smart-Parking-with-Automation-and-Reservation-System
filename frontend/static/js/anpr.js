@@ -1,56 +1,46 @@
-// ANPR Scanner & Live Camera Plate Scanner Module
+// ANPR Scanner with Dual-Engine (Client-Side Tesseract.js + Server OpenCV)
 let webcamStream = null;
+let tesseractWorker = null;
 
-async function loadGateLogs() {
-  const container = document.getElementById('gateLogsContainer');
-  if (!container) return;
+// Initialize Tesseract.js worker in background
+document.addEventListener('DOMContentLoaded', () => {
+  initClientOCR();
+});
 
-  const lotId = window.AppState.currentLotId || 1;
-  try {
-    const res = await fetch(`/api/gate-logs?lot_id=${lotId}&limit=20`);
-    const logs = await res.json();
-    renderGateLogs(logs);
-  } catch (err) {
-    console.error("Failed to load gate logs:", err);
+async function initClientOCR() {
+  if (window.Tesseract) {
+    try {
+      console.log("[OCR] Pre-warming client OCR engine...");
+    } catch (e) {
+      console.warn("Client OCR init note:", e);
+    }
   }
 }
 
-function renderGateLogs(logs) {
-  const container = document.getElementById('gateLogsContainer');
-  if (!container) return;
+// Regex matching Indian vehicle plates (e.g. MH19BJ1234, DL08CA9876, MH 19 CV 9876)
+function extractIndianPlateRegex(rawText) {
+  if (!rawText) return null;
 
-  if (logs.length === 0) {
-    container.innerHTML = `<div class="text-xs text-slate-500 text-center py-8">No gate logs recorded yet.</div>`;
-    return;
+  // Clean characters
+  const upper = rawText.toUpperCase();
+
+  // Pattern 1: Strict state code + RTO + Series + 4 digits
+  const strictPattern = /([A-Z]{2}\s*[0-9]{1,2}\s*[A-Z]{1,3}\s*[0-9]{3,4})/g;
+  const matches = upper.match(strictPattern);
+  if (matches && matches.length > 0) {
+    return matches[0].replace(/[^A-Z0-9]/g, '');
   }
 
-  container.innerHTML = logs.map(lg => {
-    const isEntry = lg.gate_type === 'entry';
-    const gateBadge = isEntry
-      ? `<span class="bg-emerald-500/20 text-emerald-400 text-[9px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/30"><i class="fa-solid fa-arrow-right-to-bracket mr-1"></i>ENTRY</span>`
-      : `<span class="bg-amber-500/20 text-amber-400 text-[9px] font-bold px-1.5 py-0.5 rounded border border-amber-500/30"><i class="fa-solid fa-arrow-right-from-bracket mr-1"></i>EXIT</span>`;
+  // Pattern 2: Any 8 to 10 alphanumeric block starting with state code letters
+  const alphanumeric = upper.replace(/[^A-Z0-9]/g, '');
+  if (alphanumeric.length >= 8 && alphanumeric.length <= 11) {
+    return alphanumeric;
+  }
 
-    const timeStr = new Date(lg.timestamp).toLocaleTimeString();
-
-    return `
-      <div class="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80 flex items-center justify-between text-xs space-x-2">
-        <div class="space-y-0.5">
-          <div class="flex items-center space-x-2">
-            <span class="font-extrabold mono-font text-white">${lg.plate_number}</span>
-            ${gateBadge}
-          </div>
-          <p class="text-[11px] text-slate-400">${lg.message || lg.action_taken}</p>
-        </div>
-        <div class="text-right">
-          <span class="text-[10px] text-slate-500 mono-font block">${timeStr}</span>
-          ${lg.slot_assigned ? `<span class="text-[10px] font-bold text-blue-400 mono-font">${lg.slot_assigned}</span>` : ''}
-        </div>
-      </div>
-    `;
-  }).join('');
+  return alphanumeric.length >= 4 ? alphanumeric : null;
 }
 
-// 🎥 LIVE WEBCAM / MOBILE CAMERA SCANNER
+// 🎥 LIVE CAMERA SCANNER (Mobile & Laptop WebCam)
 async function toggleLiveWebcamScanner() {
   const video = document.getElementById('liveWebcamVideo');
   const container = document.getElementById('webcamContainer');
@@ -67,18 +57,18 @@ async function toggleLiveWebcamScanner() {
     if (barrierGraphic) barrierGraphic.classList.remove('hidden');
 
     if (toggleBtn) {
-      toggleBtn.innerHTML = `<i class="fa-solid fa-camera"></i><span>Start Camera</span>`;
-      toggleBtn.className = "w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded-xl transition flex items-center justify-center space-x-1.5";
+      toggleBtn.innerHTML = `<i class="fa-solid fa-camera mr-1.5"></i><span>Start Camera</span>`;
+      toggleBtn.className = "w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 rounded-xl transition flex items-center justify-center shadow-lg shadow-emerald-600/20";
     }
     if (captureBtn) captureBtn.classList.add('hidden');
-    showToast("Live camera scanner stopped", "info");
+    showToast("Camera stopped", "info");
   } else {
     // Start Camera
     try {
-      showToast("Accessing device camera...", "info");
+      showToast("Starting device camera...", "info");
       const constraints = {
         video: {
-          facingMode: { ideal: "environment" }, // Prefer rear camera on mobile
+          facingMode: { ideal: "environment" }, // Prefer back camera on mobile
           width: { ideal: 1280 },
           height: { ideal: 720 }
         }
@@ -94,19 +84,19 @@ async function toggleLiveWebcamScanner() {
       if (barrierGraphic) barrierGraphic.classList.add('hidden');
 
       if (toggleBtn) {
-        toggleBtn.innerHTML = `<i class="fa-solid fa-stop"></i><span>Stop Camera</span>`;
-        toggleBtn.className = "w-full bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold py-2 rounded-xl transition flex items-center justify-center space-x-1.5";
+        toggleBtn.innerHTML = `<i class="fa-solid fa-stop mr-1.5"></i><span>Stop Camera</span>`;
+        toggleBtn.className = "w-full bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold py-2.5 rounded-xl transition flex items-center justify-center shadow-lg shadow-rose-600/20";
       }
       if (captureBtn) captureBtn.classList.remove('hidden');
-      showToast("Live camera active! Align vehicle number plate inside crosshairs and click Scan.", "success");
+      showToast("Live camera active! Align vehicle number plate inside frame and tap Scan.", "success");
     } catch (err) {
-      console.error("Webcam error:", err);
-      showToast("Could not access camera: " + err.message + ". Please ensure camera permissions are allowed.", "error");
+      console.error("Camera error:", err);
+      showToast("Camera access error: " + err.message + ". Please grant camera permission.", "error");
     }
   }
 }
 
-// 📸 CAPTURE FRAME FROM WEBCAM AND PROCESS VIA OCR
+// 📸 CAPTURE FRAME FROM CAMERA AND RUN DUAL OCR (Client + Server)
 async function captureAndScanPlate() {
   const video = document.getElementById('liveWebcamVideo');
   const canvas = document.getElementById('liveWebcamCanvas');
@@ -119,26 +109,44 @@ async function captureAndScanPlate() {
 
   if (captureBtn) {
     captureBtn.disabled = true;
-    captureBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i><span>Scanning Plate...</span>`;
+    captureBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1.5"></i><span>Scanning Plate...</span>`;
   }
 
   try {
     canvas.width = video.videoWidth || 1280;
     canvas.height = video.videoHeight || 720;
     const ctx = canvas.getContext('2d');
+    
+    // Draw raw image
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Convert Canvas to Blob and send to ANPR backend
-    canvas.toBlob(async (blob) => {
-      if (!blob) {
-        throw new Error("Failed to capture frame");
-      }
+    let detectedPlate = "";
 
+    // 1. Run Client-Side Tesseract.js OCR
+    if (window.Tesseract) {
+      try {
+        showToast("Analyzing license plate characters...", "info");
+        const ocrResult = await Tesseract.recognize(canvas, 'eng', {
+          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 '
+        });
+        const clientText = ocrResult.data.text;
+        console.log("[Client OCR Raw Output]:", clientText);
+        detectedPlate = extractIndianPlateRegex(clientText);
+      } catch (e) {
+        console.warn("Client OCR fallback to server:", e);
+      }
+    }
+
+    // 2. Transmit to Server API
+    canvas.toBlob(async (blob) => {
       const formData = new FormData();
-      formData.append('file', blob, 'camera_capture.jpg');
+      if (blob) formData.append('file', blob, 'capture.jpg');
       formData.append('lot_id', window.AppState.currentLotId || 1);
       formData.append('gate_type', 'entry');
       formData.append('vehicle_type', 'car');
+      if (detectedPlate) {
+        formData.append('plate_override', detectedPlate);
+      }
 
       try {
         const res = await fetch('/api/anpr/scan-image', {
@@ -148,7 +156,7 @@ async function captureAndScanPlate() {
 
         const data = await res.json();
         if (!res.ok) {
-          throw new Error(data.detail || "Plate not detected");
+          throw new Error(data.detail || "Plate not detected. Please hold plate closer or enter manually.");
         }
 
         handleGateVisualUpdate({
@@ -166,37 +174,54 @@ async function captureAndScanPlate() {
       } finally {
         if (captureBtn) {
           captureBtn.disabled = false;
-          captureBtn.innerHTML = `<i class="fa-solid fa-bolt"></i><span>Scan Plate Now</span>`;
+          captureBtn.innerHTML = `<i class="fa-solid fa-bolt mr-1.5"></i><span>Scan Plate Now</span>`;
         }
       }
-    }, 'image/jpeg', 0.9);
+    }, 'image/jpeg', 0.92);
 
   } catch (err) {
-    showToast("Error capturing camera frame: " + err.message, "error");
+    showToast("Scan error: " + err.message, "error");
     if (captureBtn) {
       captureBtn.disabled = false;
-      captureBtn.innerHTML = `<i class="fa-solid fa-bolt"></i><span>Scan Plate Now</span>`;
+      captureBtn.innerHTML = `<i class="fa-solid fa-bolt mr-1.5"></i><span>Scan Plate Now</span>`;
     }
   }
 }
 
-// 📁 PROCESS IMAGE UPLOAD
+// 📁 PROCESS IMAGE UPLOAD WITH DUAL OCR
 async function processImageANPR() {
   const fileInput = document.getElementById('anprImageUpload');
   if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-    showToast("Please select an image containing a license plate", "warning");
+    showToast("Please choose an image file containing a license plate", "warning");
     return;
   }
 
   const file = fileInput.files[0];
+  showToast("Scanning vehicle image with Dual OCR...", "info");
+
+  let clientDetected = null;
+
+  // Run Client-Side OCR first
+  if (window.Tesseract) {
+    try {
+      const ocrResult = await Tesseract.recognize(file, 'eng');
+      clientDetected = extractIndianPlateRegex(ocrResult.data.text);
+      console.log("[Client File OCR]:", ocrResult.data.text, "Extracted:", clientDetected);
+    } catch (e) {
+      console.warn("Client file OCR pass:", e);
+    }
+  }
+
   const formData = new FormData();
   formData.append('file', file);
   formData.append('lot_id', window.AppState.currentLotId || 1);
   formData.append('gate_type', 'entry');
   formData.append('vehicle_type', 'car');
+  if (clientDetected) {
+    formData.append('plate_override', clientDetected);
+  }
 
   try {
-    showToast("Processing image via ANPR OCR...", "info");
     const res = await fetch('/api/anpr/scan-image', {
       method: 'POST',
       body: formData
@@ -204,7 +229,7 @@ async function processImageANPR() {
 
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.detail || "Failed to scan plate");
+      throw new Error(data.detail || "Could not recognize plate. Please ensure plate is clearly visible.");
     }
 
     handleGateVisualUpdate({
@@ -222,7 +247,7 @@ async function processImageANPR() {
   }
 }
 
-// ⌨️ TRIGGER SIMULATED GATE
+// ⌨️ DIRECT SIMULATION TRIGGER
 async function triggerSimulatedGate(gateType) {
   const input = document.getElementById('manualPlateInput');
   const plate = input?.value.trim() || (gateType === 'entry' ? 'MH19CV9876' : 'MH19BJ1234');
@@ -262,7 +287,7 @@ async function triggerSimulatedGate(gateType) {
   }
 }
 
-// 🚧 BARRIER ANIMATION & STATUS UPDATE
+// 🚧 BARRIER ARM ANIMATION & GATE STATUS UPDATE
 function handleGateVisualUpdate(event) {
   const plateEl = document.getElementById('lastScannedPlate');
   const statusEl = document.getElementById('scanResultStatus');
@@ -275,7 +300,7 @@ function handleGateVisualUpdate(event) {
   if (event.barrier_open) {
     if (barrierArm) barrierArm.classList.add('open');
     if (badge) {
-      badge.className = 'bg-emerald-500/20 text-emerald-400 text-xs font-bold px-3 py-1 rounded-full border border-emerald-500/30 flex items-center space-x-1';
+      badge.className = 'bg-emerald-500/20 text-emerald-400 text-xs font-extrabold px-3.5 py-1 rounded-full border border-emerald-500/30 flex items-center space-x-1.5';
       badge.innerHTML = `<i class="fa-solid fa-lock-open"></i><span>BARRIER OPEN</span>`;
     }
 
@@ -283,9 +308,59 @@ function handleGateVisualUpdate(event) {
     setTimeout(() => {
       if (barrierArm) barrierArm.classList.remove('open');
       if (badge) {
-        badge.className = 'bg-rose-500/20 text-rose-400 text-xs font-bold px-3 py-1 rounded-full border border-rose-500/30 flex items-center space-x-1';
+        badge.className = 'bg-rose-500/20 text-rose-400 text-xs font-extrabold px-3.5 py-1 rounded-full border border-rose-500/30 flex items-center space-x-1.5';
         badge.innerHTML = `<i class="fa-solid fa-lock"></i><span>BARRIER CLOSED</span>`;
       }
     }, 4500);
   }
+}
+
+// LOAD GATE LOGS
+async function loadGateLogs() {
+  const container = document.getElementById('gateLogsContainer');
+  if (!container) return;
+
+  const lotId = window.AppState.currentLotId || 1;
+  try {
+    const res = await fetch(`/api/gate-logs?lot_id=${lotId}&limit=20`);
+    const logs = await res.json();
+    renderGateLogs(logs);
+  } catch (err) {
+    console.error("Failed to load gate logs:", err);
+  }
+}
+
+function renderGateLogs(logs) {
+  const container = document.getElementById('gateLogsContainer');
+  if (!container) return;
+
+  if (logs.length === 0) {
+    container.innerHTML = `<div class="text-xs text-slate-500 text-center py-8">No gate events logged yet.</div>`;
+    return;
+  }
+
+  container.innerHTML = logs.map(lg => {
+    const isEntry = lg.gate_type === 'entry';
+    const gateBadge = isEntry
+      ? `<span class="bg-emerald-500/20 text-emerald-400 text-[9px] font-extrabold px-2 py-0.5 rounded-md border border-emerald-500/30"><i class="fa-solid fa-arrow-right-to-bracket mr-1"></i>ENTRY</span>`
+      : `<span class="bg-amber-500/20 text-amber-400 text-[9px] font-extrabold px-2 py-0.5 rounded-md border border-amber-500/30"><i class="fa-solid fa-arrow-right-from-bracket mr-1"></i>EXIT</span>`;
+
+    const timeStr = new Date(lg.timestamp).toLocaleTimeString();
+
+    return `
+      <div class="p-3 rounded-2xl bg-slate-900/70 border border-slate-800 flex items-center justify-between text-xs space-x-2 shadow-inner">
+        <div class="space-y-0.5">
+          <div class="flex items-center space-x-2">
+            <span class="font-extrabold mono-font text-white">${lg.plate_number}</span>
+            ${gateBadge}
+          </div>
+          <p class="text-[11px] text-slate-400">${lg.message || lg.action_taken}</p>
+        </div>
+        <div class="text-right">
+          <span class="text-[10px] text-slate-500 mono-font block">${timeStr}</span>
+          ${lg.slot_assigned ? `<span class="text-[10px] font-extrabold text-blue-400 mono-font">${lg.slot_assigned}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
 }

@@ -8,7 +8,16 @@ import cv2
 
 try:
     import pytesseract
-    # Check if tesseract binary is accessible
+    # Auto-detect Tesseract on Windows standard paths
+    windows_paths = [
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        os.path.expanduser(r"~\AppData\Local\Programs\Tesseract-OCR\tesseract.exe")
+    ]
+    for p in windows_paths:
+        if os.path.exists(p):
+            pytesseract.pytesseract.tesseract_cmd = p
+            break
     HAS_PYTESSERACT = True
 except Exception:
     HAS_PYTESSERACT = False
