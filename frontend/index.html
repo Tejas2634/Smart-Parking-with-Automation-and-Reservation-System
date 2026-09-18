@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartPark Jalgaon | Intelligent Parking & Live ANPR Platform</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+            },
+            accent: {
+              500: '#8b5cf6',
+              600: '#7c3aed',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts & FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  
+  <!-- Leaflet Map CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Custom Human Styles -->
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="selection:bg-blue-600 selection:text-white flex flex-col min-h-screen">
+
+  <!-- TOP APP HEADER -->
+  <header class="sticky top-0 z-50 human-glass border-b border-slate-800/80 px-4 sm:px-6 lg:px-8 py-3.5">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      
+      <!-- Brand Logo -->
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="switchTab('mapTab')">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-blue-500/25 ring-1 ring-white/20">
+          <i class="fa-solid fa-square-parking text-2xl text-white"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-extrabold text-xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-blue-300">SmartPark</span>
+            <span class="text-[10px] uppercase font-bold tracking-widest bg-blue-500/20 text-blue-400 px-2.5 py-0.5 rounded-full border border-blue-500/30">Jalgaon</span>
+          </div>
+          <p class="text-[11px] text-slate-400 hidden sm:block">Intelligent Slot Allocation & Google Maps Tracer</p>
+        </div>
+      </div>
+
+      <!-- Quick Jalgaon Hub Switcher -->
+      <div class="hidden md:flex items-center space-x-2 bg-slate-900/80 border border-slate-700/80 rounded-2xl px-3.5 py-1.5 shadow-inner">
+        <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+        <span class="text-xs text-slate-400 font-medium">Ground:</span>
+        <select id="globalLotSelect" class="bg-transparent text-xs font-semibold text-slate-200 outline-none cursor-pointer pr-2 max-w-[240px] truncate">
+          <option value="1">Jalgaon Railway Station Ground</option>
+          <option value="2">Shivtirth Ground (शिवतीर्थ मैदान)</option>
+          <option value="3">Khandesh Central Mall</option>
+          <option value="4">Golani Commercial Complex</option>
+          <option value="5">Old BJ Market Ground</option>
+          <option value="6">Mehrun Lake Promenade</option>
+          <option value="7">KBC University (NMU) Gate</option>
+          <option value="8">MIDC Industrial Bay</option>
+        </select>
+      </div>
+
+      <!-- Desktop Nav Tabs -->
+      <nav class="hidden lg:flex items-center space-x-1 bg-slate-900/70 p-1.5 rounded-2xl border border-slate-800">
+        <button onclick="switchTab('mapTab')" class="nav-btn active px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 transition text-blue-400 bg-blue-500/10" data-tab="mapTab">
+          <i class="fa-solid fa-map-location-dot"></i>
+          <span>Map Tracer</span>
+        </button>
+        <button onclick="switchTab('slotsTab')" class="nav-btn px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 transition text-slate-400 hover:text-slate-200" data-tab="slotsTab">
+          <i class="fa-solid fa-table-cells"></i>
+          <span>Slot Grid</span>
+        </button>
+        <button onclick="switchTab('bookingTab')" class="nav-btn px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 transition text-slate-400 hover:text-slate-200" data-tab="bookingTab">
+          <i class="fa-solid fa-calendar-check"></i>
+          <span>Pre-Book</span>
+        </button>
+        <button onclick="switchTab('anprTab')" class="nav-btn px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 transition text-slate-400 hover:text-slate-200" data-tab="anprTab">
+          <i class="fa-solid fa-camera"></i>
+          <span>Scan Plate</span>
+        </button>
+        <button onclick="switchTab('passesTab')" class="nav-btn px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 transition text-slate-400 hover:text-slate-200" data-tab="passesTab">
+          <i class="fa-solid fa-ticket"></i>
+          <span>My Passes</span>
+        </button>
+        <button onclick="switchTab('adminTab')" class="nav-btn px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 transition text-slate-400 hover:text-slate-200" data-tab="adminTab">
+          <i class="fa-solid fa-chart-pie"></i>
+          <span>Analytics</span>
+        </button>
+      </nav>
+
+      <!-- Primary Action -->
+      <div class="flex items-center space-x-3">
+        <button onclick="switchTab('bookingTab')" class="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-extrabold px-4 py-2.5 rounded-2xl shadow-lg shadow-blue-500/30 flex items-center space-x-2 transition transform active:scale-95">
+          <i class="fa-solid fa-bolt"></i>
+          <span>Reserve Slot</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- MOBILE BOTTOM FLOATING NAVIGATION -->
+  <div class="lg:hidden fixed bottom-3 left-3 right-3 z-50 human-glass border border-slate-700/80 rounded-3xl p-1.5 flex items-center justify-around shadow-2xl">
+    <button onclick="switchTab('mapTab')" class="mob-nav-btn text-blue-400 flex flex-col items-center py-1 px-2.5 rounded-2xl transition" data-tab="mapTab">
+      <i class="fa-solid fa-map-location-dot text-base"></i>
+      <span class="text-[10px] mt-0.5 font-bold">Map</span>
+    </button>
+    <button onclick="switchTab('slotsTab')" class="mob-nav-btn text-slate-400 flex flex-col items-center py-1 px-2.5 rounded-2xl transition" data-tab="slotsTab">
+      <i class="fa-solid fa-table-cells text-base"></i>
+      <span class="text-[10px] mt-0.5 font-bold">Slots</span>
+    </button>
+    <button onclick="switchTab('bookingTab')" class="mob-nav-btn text-slate-400 flex flex-col items-center py-1 px-2.5 rounded-2xl transition" data-tab="bookingTab">
+      <i class="fa-solid fa-calendar-check text-base"></i>
+      <span class="text-[10px] mt-0.5 font-bold">Book</span>
+    </button>
+    <button onclick="switchTab('anprTab')" class="mob-nav-btn text-slate-400 flex flex-col items-center py-1 px-2.5 rounded-2xl transition" data-tab="anprTab">
+      <i class="fa-solid fa-camera text-base"></i>
+      <span class="text-[10px] mt-0.5 font-bold">Scan</span>
+    </button>
+    <button onclick="switchTab('passesTab')" class="mob-nav-btn text-slate-400 flex flex-col items-center py-1 px-2.5 rounded-2xl transition" data-tab="passesTab">
+      <i class="fa-solid fa-ticket text-base"></i>
+      <span class="text-[10px] mt-0.5 font-bold">Passes</span>
+    </button>
+  </div>
+
+  <!-- MAIN CONTAINER -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 pb-28 lg:pb-12 space-y-6">
+
+    <!-- HERO SEARCH & PRICING BAR -->
+    <div class="human-glass rounded-3xl p-5 sm:p-6 border border-slate-800 shadow-2xl relative overflow-hidden flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6">
+      
+      <!-- Search Input for Jalgaon Grounds -->
+      <div class="flex-1 max-w-xl">
+        <span class="text-[11px] font-bold text-blue-400 uppercase tracking-wider block mb-1.5 flex items-center space-x-1.5">
+          <i class="fa-solid fa-location-dot"></i>
+          <span>Jalgaon Smart Parking Network</span>
+        </span>
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-slate-400 text-sm"></i>
+          <input type="text" id="jalgaonSearchInput" oninput="filterJalgaonGrounds(this.value)" placeholder="Search Shivtirth Ground, Station, Golani Market, Mehrun..." class="w-full bg-slate-900/90 border border-slate-700/80 rounded-2xl pl-11 pr-4 py-3 text-sm text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none placeholder:text-slate-500 shadow-inner">
+        </div>
+      </div>
+
+      <!-- Pricing Badges -->
+      <div class="flex items-center space-x-3 self-center lg:self-auto">
+        <div class="bg-slate-900/90 border border-slate-700/80 px-4 py-2.5 rounded-2xl flex items-center space-x-3 shadow-inner">
+          <div class="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+            <i class="fa-solid fa-motorcycle text-base"></i>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-400 block font-medium">Bike Rate</span>
+            <span class="text-sm font-extrabold text-emerald-400 mono-font">₹30 <span class="text-[10px] text-slate-400 font-normal">/ hour</span></span>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/90 border border-slate-700/80 px-4 py-2.5 rounded-2xl flex items-center space-x-3 shadow-inner">
+          <div class="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+            <i class="fa-solid fa-car text-base"></i>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-400 block font-medium">Car Rate</span>
+            <span class="text-sm font-extrabold text-blue-400 mono-font">₹50 <span class="text-[10px] text-slate-400 font-normal">/ hour</span></span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TAB 1: JALGAON GOOGLE MAP & LIVE TRACER -->
+    <section id="mapTab" class="tab-content block space-y-6">
+      
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-2xl font-extrabold text-white tracking-tight flex items-center space-x-2.5">
+            <i class="fa-solid fa-location-crosshairs text-blue-500"></i>
+            <span>Jalgaon Ground Location Tracer</span>
+          </h2>
+          <p class="text-sm text-slate-400 mt-0.5">Real-time GPS tracer with Google Maps and live available slot counters</p>
+        </div>
+        
+        <div class="flex items-center space-x-2.5">
+          <button id="locateMeBtn" onclick="locateUserPosition()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2.5 rounded-2xl flex items-center space-x-2 shadow-lg shadow-blue-600/25 transition transform active:scale-95">
+            <i class="fa-solid fa-crosshairs"></i>
+            <span>Start Live GPS Tracer</span>
+          </button>
+          <button onclick="reloadLotsMap()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3.5 py-2.5 rounded-2xl border border-slate-700 transition">
+            <i class="fa-solid fa-arrows-rotate"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Google Map Container -->
+        <div class="lg:col-span-2 human-glass rounded-3xl p-4 border border-slate-800 h-[500px] relative overflow-hidden flex flex-col shadow-2xl">
+          <div id="map" class="w-full h-full rounded-2xl"></div>
+          <div id="mapLoadingOverlay" class="absolute inset-0 bg-slate-950/75 backdrop-blur-sm z-20 flex items-center justify-center hidden">
+            <div class="flex flex-col items-center space-y-2">
+              <i class="fa-solid fa-circle-notch fa-spin text-blue-500 text-3xl"></i>
+              <span class="text-xs font-bold text-slate-200">Tracing nearest parking in Jalgaon...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Jalgaon Grounds Sidebar List -->
+        <div class="human-glass rounded-3xl p-5 border border-slate-800 flex flex-col h-[500px] shadow-2xl">
+          <div class="flex items-center justify-between pb-3.5 border-b border-slate-800">
+            <h3 class="text-sm font-extrabold text-white flex items-center space-x-2">
+              <i class="fa-solid fa-layer-group text-indigo-400"></i>
+              <span>Jalgaon Grounds & Hubs</span>
+            </h3>
+            <span id="lotCountBadge" class="text-xs bg-slate-800 text-blue-400 font-bold px-2.5 py-0.5 rounded-full border border-slate-700">8 Grounds</span>
+          </div>
+          <div id="nearbyLotsList" class="flex-1 overflow-y-auto space-y-3 pt-3 pr-1">
+            <!-- Dynamic Grounds populated by map.js -->
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- TAB 2: INTERACTIVE 2D SLOT VISUALIZER -->
+    <section id="slotsTab" class="tab-content hidden space-y-6">
+      
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-2xl font-extrabold text-white tracking-tight flex items-center space-x-2.5">
+            <i class="fa-solid fa-table-cells text-emerald-400"></i>
+            <span>Interactive Parking Floor Plan</span>
+          </h2>
+          <p class="text-sm text-slate-400 mt-0.5">Click any free bay to instantly reserve your parking space</p>
+        </div>
+
+        <!-- Filter Buttons -->
+        <div class="flex items-center space-x-2 flex-wrap gap-y-2">
+          <div class="bg-slate-900/90 border border-slate-800 p-1 rounded-2xl flex items-center space-x-1 text-xs">
+            <button onclick="filterSlotType('all')" class="slot-filter-btn active px-3.5 py-1.5 rounded-xl font-bold text-blue-400 bg-blue-500/10" data-filter="all">All Bays</button>
+            <button onclick="filterSlotType('car')" class="slot-filter-btn px-3.5 py-1.5 rounded-xl font-bold text-slate-400 hover:text-slate-200" data-filter="car">🚗 Cars (₹50/h)</button>
+            <button onclick="filterSlotType('bike')" class="slot-filter-btn px-3.5 py-1.5 rounded-xl font-bold text-slate-400 hover:text-slate-200" data-filter="bike">🏍️ Bikes (₹30/h)</button>
+          </div>
+          <button onclick="loadCurrentSlots()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3.5 py-2 rounded-xl border border-slate-700 transition">
+            <i class="fa-solid fa-rotate"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Legend Cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="human-glass-card rounded-2xl p-4 border border-slate-800 flex items-center space-x-3.5">
+          <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+            <i class="fa-solid fa-circle-check text-lg"></i>
+          </div>
+          <div>
+            <span class="text-xs text-slate-400 block font-medium">Available Free</span>
+            <span id="statAvailableCount" class="text-lg font-extrabold text-emerald-400 mono-font">--</span>
+          </div>
+        </div>
+
+        <div class="human-glass-card rounded-2xl p-4 border border-slate-800 flex items-center space-x-3.5">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+            <i class="fa-solid fa-clock text-lg"></i>
+          </div>
+          <div>
+            <span class="text-xs text-slate-400 block font-medium">Pre-Booked</span>
+            <span id="statBookedCount" class="text-lg font-extrabold text-amber-400 mono-font">--</span>
+          </div>
+        </div>
+
+        <div class="human-glass-card rounded-2xl p-4 border border-slate-800 flex items-center space-x-3.5">
+          <div class="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
+            <i class="fa-solid fa-ban text-lg"></i>
+          </div>
+          <div>
+            <span class="text-xs text-slate-400 block font-medium">Occupied</span>
+            <span id="statOccupiedCount" class="text-lg font-extrabold text-rose-400 mono-font">--</span>
+          </div>
+        </div>
+
+        <div class="human-glass-card rounded-2xl p-4 border border-slate-800 flex items-center space-x-3.5">
+          <div class="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
+            <i class="fa-solid fa-warehouse text-lg"></i>
+          </div>
+          <div>
+            <span class="text-xs text-slate-400 block font-medium">Total Capacity</span>
+            <span id="statTotalCount" class="text-lg font-extrabold text-blue-400 mono-font">--</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2D Slot Grid Matrix -->
+      <div class="human-glass rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-2xl space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <span class="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Ground Floor / Level 1 Deck</span>
+          <span class="text-xs text-blue-400 font-medium"><i class="fa-solid fa-hand-pointer mr-1"></i>Tap any green bay to book</span>
+        </div>
+        <div id="slotsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <!-- Dynamic Slots Injected by slots.js -->
+        </div>
+      </div>
+
+    </section>
+
+    <!-- TAB 3: USER-FRIENDLY PRE-BOOKING FORM -->
+    <section id="bookingTab" class="tab-content hidden space-y-6">
+      
+      <div class="max-w-2xl mx-auto">
+        
+        <div class="text-center mb-6">
+          <h2 class="text-3xl font-extrabold text-white tracking-tight">Pre-Book Your Parking Bay</h2>
+          <p class="text-sm text-slate-400 mt-1">Guaranteed bay reservation in Jalgaon with instant QR pass</p>
+        </div>
+
+        <div class="human-glass rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-2xl space-y-6">
+          <form id="bookingForm" onsubmit="handlePreBooking(event)" class="space-y-5">
+            
+            <!-- Step 1: Parking Ground -->
+            <div>
+              <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">1. Select Jalgaon Parking Ground</label>
+              <select id="bookingLotId" class="w-full bg-slate-900/90 border border-slate-700 rounded-2xl px-4 py-3 text-sm font-semibold text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition cursor-pointer">
+                <option value="1">Jalgaon Junction Railway Station Parking Ground</option>
+                <option value="2">Shivtirth Ground (शिवतीर्थ मैदान) Public Parking</option>
+                <option value="3">Khandesh Central Mall Multi-Level Parking</option>
+                <option value="4">Golani Commercial Complex & Ground</option>
+                <option value="5">Old BJ Market (बी. जे. मार्केट) Ground</option>
+                <option value="6">Mehrun Lake & Garden Parking Ground</option>
+                <option value="7">KBC North Maharashtra University (NMU) Gate</option>
+                <option value="8">MIDC Ajanta Road Industrial Bay</option>
+              </select>
+            </div>
+
+            <!-- Step 2: Vehicle Category Toggle -->
+            <div>
+              <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">2. Vehicle Type & Rate</label>
+              <div class="grid grid-cols-2 gap-4">
+                <label class="cursor-pointer">
+                  <input type="radio" name="vehicle_type" value="car" checked onchange="updateBookingEstimation()" class="peer sr-only">
+                  <div class="p-4 rounded-2xl border-2 border-slate-700 bg-slate-900/60 peer-checked:border-blue-500 peer-checked:bg-blue-500/10 peer-checked:shadow-lg peer-checked:shadow-blue-500/20 transition flex items-center space-x-3.5">
+                    <div class="w-11 h-11 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                      <i class="fa-solid fa-car text-xl"></i>
+                    </div>
+                    <div>
+                      <span class="text-sm font-extrabold text-white block">Car Bay</span>
+                      <span class="text-xs text-blue-400 font-extrabold mono-font">₹50 / hr</span>
+                    </div>
+                  </div>
+                </label>
+                <label class="cursor-pointer">
+                  <input type="radio" name="vehicle_type" value="bike" onchange="updateBookingEstimation()" class="peer sr-only">
+                  <div class="p-4 rounded-2xl border-2 border-slate-700 bg-slate-900/60 peer-checked:border-emerald-500 peer-checked:bg-emerald-500/10 peer-checked:shadow-lg peer-checked:shadow-emerald-500/20 transition flex items-center space-x-3.5">
+                    <div class="w-11 h-11 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                      <i class="fa-solid fa-motorcycle text-xl"></i>
+                    </div>
+                    <div>
+                      <span class="text-sm font-extrabold text-white block">Bike Bay</span>
+                      <span class="text-xs text-emerald-400 font-extrabold mono-font">₹30 / hr</span>
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Step 3: Vehicle Registration & User Info -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">3. Vehicle Plate (MH 19)</label>
+                <div class="relative">
+                  <i class="fa-solid fa-id-card absolute left-3.5 top-3.5 text-slate-500 text-sm"></i>
+                  <input type="text" id="bookingPlate" required placeholder="e.g. MH 19 BJ 1234" class="w-full bg-slate-900 border border-slate-700 rounded-2xl pl-10 pr-4 py-3 text-sm uppercase mono-font font-bold text-white focus:border-blue-500 outline-none placeholder:text-slate-600">
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">4. Full Name</label>
+                <div class="relative">
+                  <i class="fa-solid fa-user absolute left-3.5 top-3.5 text-slate-500 text-sm"></i>
+                  <input type="text" id="bookingName" required placeholder="e.g. Aniket Patil" class="w-full bg-slate-900 border border-slate-700 rounded-2xl pl-10 pr-4 py-3 text-sm text-white focus:border-blue-500 outline-none placeholder:text-slate-600">
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">5. Mobile Number</label>
+                <div class="relative">
+                  <i class="fa-solid fa-phone absolute left-3.5 top-3.5 text-slate-500 text-sm"></i>
+                  <input type="tel" id="bookingPhone" required placeholder="+91 9422212345" class="w-full bg-slate-900 border border-slate-700 rounded-2xl pl-10 pr-4 py-3 text-sm text-white focus:border-blue-500 outline-none placeholder:text-slate-600">
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">6. Email Address (Optional)</label>
+                <div class="relative">
+                  <i class="fa-solid fa-envelope absolute left-3.5 top-3.5 text-slate-500 text-sm"></i>
+                  <input type="email" id="bookingEmail" placeholder="aniket@example.com" class="w-full bg-slate-900 border border-slate-700 rounded-2xl pl-10 pr-4 py-3 text-sm text-white focus:border-blue-500 outline-none placeholder:text-slate-600">
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 4: Arrival Time & Quick Duration Pills -->
+            <div class="space-y-3">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">7. Arrival Date & Time</label>
+                  <input type="datetime-local" id="bookingStartTime" required class="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none">
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Duration: <span id="durationDisplay" class="text-blue-400 font-extrabold">2 Hours</span></label>
+                  <input type="range" id="bookingDuration" min="1" max="12" step="1" value="2" oninput="updateBookingEstimation()" class="w-full accent-blue-500 mt-2 cursor-pointer">
+                </div>
+              </div>
+
+              <!-- Quick Duration Pills -->
+              <div class="flex items-center space-x-2 pt-1">
+                <span class="text-[11px] text-slate-400">Quick Select:</span>
+                <button type="button" onclick="setQuickDuration(1)" class="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">1 hr</button>
+                <button type="button" onclick="setQuickDuration(2)" class="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">2 hrs</button>
+                <button type="button" onclick="setQuickDuration(4)" class="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">4 hrs</button>
+                <button type="button" onclick="setQuickDuration(8)" class="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">8 hrs (Full Day)</button>
+              </div>
+            </div>
+
+            <!-- Step 5: Price Breakdown Box -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-2.5">
+              <div class="flex justify-between text-xs text-slate-400">
+                <span>Selected Bay Category</span>
+                <span id="calcRateText" class="mono-font text-slate-200">₹50 / hr (CAR)</span>
+              </div>
+              <div class="flex justify-between text-xs text-slate-400">
+                <span>Reserved Duration</span>
+                <span id="calcDurationText" class="mono-font text-slate-200">2 Hours</span>
+              </div>
+              <div class="pt-2.5 border-t border-slate-800 flex justify-between items-center">
+                <div>
+                  <span class="text-sm font-extrabold text-white block">Total Amount Due</span>
+                  <span class="text-[10px] text-emerald-400">Includes guaranteed bay & digital QR entry</span>
+                </div>
+                <span id="calcTotalAmount" class="text-2xl font-extrabold text-emerald-400 mono-font">₹100.00</span>
+              </div>
+            </div>
+
+            <button type="submit" id="submitBookingBtn" class="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold py-4 rounded-2xl shadow-xl shadow-blue-500/30 transition transform active:scale-[0.99] flex items-center justify-center space-x-2 text-sm">
+              <i class="fa-solid fa-ticket"></i>
+              <span>Confirm Reservation & Generate QR Ticket</span>
+            </button>
+          </form>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- TAB 4: LIVE CAMERA ANPR SCANNER & GATE -->
+    <section id="anprTab" class="tab-content hidden space-y-6">
+      
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-2xl font-extrabold text-white tracking-tight flex items-center space-x-2.5">
+            <i class="fa-solid fa-camera text-blue-400"></i>
+            <span>Live Number Plate Scanner & ANPR Gate</span>
+          </h2>
+          <p class="text-sm text-slate-400 mt-0.5">Use your mobile/laptop camera for instant OCR plate recognition</p>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span class="text-xs bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-2xl flex items-center space-x-1.5">
+            <i class="fa-brands fa-raspberry-pi text-rose-500"></i>
+            <span>Raspberry Pi 4B Ready</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Live Camera Viewport -->
+        <div class="lg:col-span-2 human-glass rounded-3xl p-6 border border-slate-800 space-y-5 shadow-2xl">
+          
+          <div class="relative bg-slate-950 rounded-2xl min-h-[300px] border border-slate-800 overflow-hidden flex flex-col justify-between p-4 shadow-inner">
+            
+            <!-- Live WebCam Video -->
+            <div id="webcamContainer" class="absolute inset-0 hidden z-0 bg-black flex items-center justify-center">
+              <video id="liveWebcamVideo" autoplay playsinline class="w-full h-full object-cover"></video>
+              <canvas id="liveWebcamCanvas" class="hidden"></canvas>
+              
+              <!-- Laser Scan Overlay -->
+              <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+                <div class="w-72 sm:w-96 h-32 border-2 border-emerald-400 border-dashed rounded-2xl relative flex flex-col items-center justify-between p-2 bg-emerald-500/10 backdrop-blur-[1px]">
+                  <div class="laser-scanline"></div>
+                  <span class="text-[10px] font-bold text-emerald-300 uppercase tracking-widest bg-slate-900/90 px-2 py-0.5 rounded-full">Align Plate Inside Frame</span>
+                  <span class="text-[10px] text-emerald-300 mono-font bg-slate-900/90 px-2 py-0.5 rounded">MH 19 XX 1234</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Top Camera Header -->
+            <div class="flex justify-between items-center z-10">
+              <div class="flex items-center space-x-2">
+                <span id="gateStatusBadge" class="bg-rose-500/20 text-rose-400 text-xs font-extrabold px-3.5 py-1 rounded-full border border-rose-500/30 flex items-center space-x-1.5">
+                  <i class="fa-solid fa-lock"></i>
+                  <span>BARRIER CLOSED</span>
+                </span>
+                <span class="text-xs text-slate-400 bg-slate-900/80 px-2.5 py-1 rounded-xl">Lane 1 - Jalgaon Gate</span>
+              </div>
+              <div class="text-xs font-mono text-slate-300 bg-slate-900/80 px-3 py-1 rounded-xl" id="liveClock">--:--:--</div>
+            </div>
+
+            <!-- Barrier Arm Graphic (when camera off) -->
+            <div id="barrierGraphicContainer" class="relative my-auto flex items-center justify-center z-10 py-6">
+              <div class="w-full max-w-md bg-slate-900/90 backdrop-blur-md p-5 rounded-2xl border border-slate-800 flex items-center space-x-4 shadow-xl">
+                <div class="w-12 h-20 bg-slate-800 rounded-xl border border-slate-700 flex flex-col items-center justify-center shadow-lg relative">
+                  <div class="w-4 h-4 rounded-full bg-slate-900 border border-slate-600 mb-2"></div>
+                  <div class="w-2 h-8 bg-blue-500/40 rounded"></div>
+                </div>
+                <div class="flex-1 relative h-6">
+                  <div id="barrierArm" class="barrier-boom h-3.5 w-full bg-gradient-to-r from-red-600 via-white to-red-600 rounded-full border border-red-400 shadow-lg"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Last Scanned Banner -->
+            <div class="z-10 bg-slate-900/90 backdrop-blur-md rounded-2xl p-3.5 border border-slate-800 flex items-center justify-between mt-4">
+              <div class="flex items-center space-x-3">
+                <span class="text-xs text-slate-400">Scanned Plate:</span>
+                <div id="lastScannedPlate" class="text-base font-extrabold mono-font text-white bg-slate-950 px-3.5 py-1 rounded-xl border border-slate-700 tracking-wider">
+                  STANDBY FOR SCAN
+                </div>
+              </div>
+              <div id="scanResultStatus" class="text-xs font-extrabold text-blue-400">Ready</div>
+            </div>
+
+          </div>
+
+          <!-- Interactive Controls -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+            
+            <!-- 1. Live WebCam -->
+            <div class="human-glass-card rounded-2xl p-4 flex flex-col justify-between space-y-3">
+              <div>
+                <span class="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-1.5">
+                  <i class="fa-solid fa-video text-emerald-400"></i>
+                  <span>Live Camera Scan</span>
+                </span>
+                <p class="text-[11px] text-slate-400 mt-1">Aim your phone or laptop camera</p>
+              </div>
+              <div class="space-y-2">
+                <button id="toggleWebcamBtn" onclick="toggleLiveWebcamScanner()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 rounded-xl transition flex items-center justify-center space-x-1.5 shadow-lg shadow-emerald-600/20">
+                  <i class="fa-solid fa-camera"></i>
+                  <span>Start Camera</span>
+                </button>
+                <button id="captureWebcamBtn" onclick="captureAndScanPlate()" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2.5 rounded-xl transition flex items-center justify-center space-x-1.5 hidden shadow-lg shadow-blue-600/20">
+                  <i class="fa-solid fa-bolt"></i>
+                  <span>Scan Plate Now</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 2. File Upload -->
+            <div class="human-glass-card rounded-2xl p-4 flex flex-col justify-between space-y-3">
+              <div>
+                <span class="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-1.5">
+                  <i class="fa-solid fa-file-image text-blue-400"></i>
+                  <span>Upload Vehicle Photo</span>
+                </span>
+                <p class="text-[11px] text-slate-400 mt-1">Upload car or bike photo</p>
+              </div>
+              <div class="space-y-2">
+                <input type="file" id="anprImageUpload" accept="image/*" class="w-full text-[10px] text-slate-400 file:mr-2 file:py-1.5 file:px-2.5 file:rounded-xl file:border-0 file:text-[10px] file:font-semibold file:bg-slate-800 file:text-white cursor-pointer">
+                <button onclick="processImageANPR()" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2.5 rounded-xl transition flex items-center justify-center space-x-1.5">
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                  <span>Process OCR</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 3. Direct Gate Trigger Simulator -->
+            <div class="human-glass-card rounded-2xl p-4 flex flex-col justify-between space-y-3">
+              <div>
+                <span class="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-1.5">
+                  <i class="fa-solid fa-keyboard text-amber-400"></i>
+                  <span>Direct Plate Trigger</span>
+                </span>
+                <p class="text-[11px] text-slate-400 mt-1">Test MH-19 plate trigger</p>
+              </div>
+              <div class="space-y-2">
+                <input type="text" id="manualPlateInput" placeholder="MH19CV9876" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs uppercase mono-font font-bold text-white focus:border-blue-500 outline-none">
+                <div class="flex space-x-1.5">
+                  <button onclick="triggerSimulatedGate('entry')" class="flex-1 bg-emerald-700 hover:bg-emerald-600 text-white text-[11px] font-bold py-2 rounded-xl transition">Check-In</button>
+                  <button onclick="triggerSimulatedGate('exit')" class="flex-1 bg-amber-700 hover:bg-amber-600 text-white text-[11px] font-bold py-2 rounded-xl transition">Check-Out</button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- Live Gate Stream Log -->
+        <div class="human-glass rounded-3xl p-5 border border-slate-800 flex flex-col h-[540px] shadow-2xl">
+          <div class="flex items-center justify-between pb-3.5 border-b border-slate-800">
+            <h3 class="text-sm font-extrabold text-white flex items-center space-x-2">
+              <i class="fa-solid fa-list-check text-blue-400"></i>
+              <span>Live Gate Events Log</span>
+            </h3>
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+          </div>
+          <div id="gateLogsContainer" class="flex-1 overflow-y-auto space-y-2.5 pt-3 pr-1">
+            <!-- Dynamic Gate Logs -->
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- TAB 5: MY PASSES & ACTIVE TICKETS -->
+    <section id="passesTab" class="tab-content hidden space-y-6">
+      
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-2xl font-extrabold text-white tracking-tight">My Bookings & QR Passes</h2>
+          <p class="text-sm text-slate-400 mt-0.5">Lookup your reservation pass and active parked vehicle status in Jalgaon</p>
+        </div>
+        <div class="flex items-center space-x-2">
+          <input type="text" id="passLookupInput" placeholder="Enter MH-19 Plate or Phone" class="bg-slate-900 border border-slate-700 rounded-2xl px-4 py-2.5 text-xs text-white uppercase mono-font focus:border-blue-500 outline-none w-64">
+          <button onclick="lookupUserBookings()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2.5 rounded-2xl transition">
+            <i class="fa-solid fa-magnifying-glass"></i>
+          </button>
+        </div>
+      </div>
+
+      <div id="passesListContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Dynamic Ticket Passes -->
+      </div>
+
+    </section>
+
+    <!-- TAB 6: ADMIN ANALYTICS -->
+    <section id="adminTab" class="tab-content hidden space-y-6">
+      
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-2xl font-extrabold text-white tracking-tight flex items-center space-x-2.5">
+            <i class="fa-solid fa-chart-line text-blue-400"></i>
+            <span>Jalgaon Smart Parking Analytics</span>
+          </h2>
+          <p class="text-sm text-slate-400 mt-0.5">Real-time revenue, occupancy breakdown, and IoT gateway status</p>
+        </div>
+        <button onclick="loadAdminAnalytics()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-4 py-2.5 rounded-2xl border border-slate-700 transition flex items-center space-x-2">
+          <i class="fa-solid fa-rotate"></i>
+          <span>Refresh Data</span>
+        </button>
+      </div>
+
+      <!-- KPI Metrics -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        <div class="human-glass rounded-3xl p-5 border border-slate-800">
+          <div class="flex justify-between items-start">
+            <div>
+              <span class="text-xs text-slate-400 font-medium">Total Revenue</span>
+              <h3 id="admRevenue" class="text-2xl font-extrabold text-emerald-400 mono-font mt-1">₹0.00</h3>
+            </div>
+            <div class="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+              <i class="fa-solid fa-indian-rupee-sign text-xl"></i>
+            </div>
+          </div>
+          <span class="text-[11px] text-emerald-400 mt-2 block font-medium">Cars @ ₹50/h | Bikes @ ₹30/h</span>
+        </div>
+
+        <div class="human-glass rounded-3xl p-5 border border-slate-800">
+          <div class="flex justify-between items-start">
+            <div>
+              <span class="text-xs text-slate-400 font-medium">Active Parked Vehicles</span>
+              <h3 id="admActiveVehicles" class="text-2xl font-extrabold text-blue-400 mono-font mt-1">0</h3>
+            </div>
+            <div class="w-11 h-11 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center">
+              <i class="fa-solid fa-car-side text-xl"></i>
+            </div>
+          </div>
+          <span class="text-[11px] text-slate-400 mt-2 block font-medium">Currently in Jalgaon bays</span>
+        </div>
+
+        <div class="human-glass rounded-3xl p-5 border border-slate-800">
+          <div class="flex justify-between items-start">
+            <div>
+              <span class="text-xs text-slate-400 font-medium">Car Occupancy Rate</span>
+              <h3 id="admCarRate" class="text-2xl font-extrabold text-amber-400 mono-font mt-1">0%</h3>
+            </div>
+            <div class="w-11 h-11 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
+              <i class="fa-solid fa-chart-pie text-xl"></i>
+            </div>
+          </div>
+          <span class="text-[11px] text-slate-400 mt-2 block font-medium" id="admCarAvail">-- slots free</span>
+        </div>
+
+        <div class="human-glass rounded-3xl p-5 border border-slate-800">
+          <div class="flex justify-between items-start">
+            <div>
+              <span class="text-xs text-slate-400 font-medium">Bike Occupancy Rate</span>
+              <h3 id="admBikeRate" class="text-2xl font-extrabold text-purple-400 mono-font mt-1">0%</h3>
+            </div>
+            <div class="w-11 h-11 rounded-2xl bg-purple-500/10 text-purple-400 flex items-center justify-center">
+              <i class="fa-solid fa-motorcycle text-xl"></i>
+            </div>
+          </div>
+          <span class="text-[11px] text-slate-400 mt-2 block font-medium" id="admBikeAvail">-- slots free</span>
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- HUMAN BOARDING PASS STYLE QR MODAL -->
+  <div id="qrModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    <div class="ticket-pass-card max-w-sm w-full p-6 shadow-2xl relative text-center space-y-4">
+      
+      <button onclick="closeQRModal()" class="absolute right-4 top-4 text-slate-400 hover:text-white">
+        <i class="fa-solid fa-xmark text-lg"></i>
+      </button>
+
+      <div class="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 mx-auto flex items-center justify-center text-xl shadow-lg shadow-emerald-500/30">
+        <i class="fa-solid fa-circle-check"></i>
+      </div>
+
+      <div>
+        <span class="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400">Official Jalgaon Parking Pass</span>
+        <h3 class="text-xl font-extrabold text-white mt-0.5">Booking Confirmed!</h3>
+        <p class="text-xs text-slate-400 mt-0.5">Scan this QR pass at the entrance camera</p>
+      </div>
+
+      <!-- Scannable QR Code -->
+      <div class="bg-white p-4 rounded-2xl inline-block shadow-2xl">
+        <img id="modalQrImg" src="" alt="Parking Pass QR Code" class="w-48 h-48 mx-auto object-contain">
+      </div>
+
+      <!-- Ticket Tear Line Effect -->
+      <div class="ticket-tear-line"></div>
+
+      <!-- Ticket Details -->
+      <div class="bg-slate-900/90 rounded-2xl p-4 text-left space-y-2 border border-slate-800 text-xs">
+        <div class="flex justify-between"><span class="text-slate-400">Pass Code:</span><span id="modalPassCode" class="font-extrabold mono-font text-blue-400">SPK-XXXXX</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Assigned Bay:</span><span id="modalAssignedSlot" class="font-extrabold mono-font text-emerald-400">C-01</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Vehicle Number:</span><span id="modalPlate" class="font-extrabold mono-font text-white">MH 19 BJ 1234</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Total Paid:</span><span id="modalAmount" class="font-extrabold mono-font text-emerald-400">₹100.00</span></div>
+      </div>
+
+      <button onclick="printPass()" class="w-full bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold py-3 rounded-2xl border border-slate-700 transition flex items-center justify-center space-x-2">
+        <i class="fa-solid fa-print"></i>
+        <span>Print Pass / Save PDF</span>
+      </button>
+
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toastContainer" class="fixed top-20 right-4 z-50 space-y-2 pointer-events-none"></div>
+
+  <!-- SCRIPTS -->
+  <script src="/static/js/app.js"></script>
+  <script src="/static/js/map.js"></script>
+  <script src="/static/js/slots.js"></script>
+  <script src="/static/js/booking.js"></script>
+  <script src="/static/js/anpr.js"></script>
+  <script src="/static/js/admin.js"></script>
+</body>
+</html>
