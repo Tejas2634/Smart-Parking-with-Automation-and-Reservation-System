@@ -1,43 +1,56 @@
-// ANPR Scanner with Dual-Engine (Client-Side Tesseract.js + Server OpenCV)
+// ANPR Scanner with Center ROI Cropping + Strict Indian Plate Matching (MH 19)
 let webcamStream = null;
-let tesseractWorker = null;
 
-// Initialize Tesseract.js worker in background
-document.addEventListener('DOMContentLoaded', () => {
-  initClientOCR();
-});
+// Valid Indian State Codes
+const INDIAN_STATE_CODES = [
+  'MH', 'DL', 'KA', 'GJ', 'HR', 'MP', 'TS', 'AP', 'TN', 'KL', 'RJ', 'UP', 'WB', 'PB', 'CH', 'GA', 'UK', 'JH', 'OD', 'BR', 'AS'
+];
 
-async function initClientOCR() {
-  if (window.Tesseract) {
-    try {
-      console.log("[OCR] Pre-warming client OCR engine...");
-    } catch (e) {
-      console.warn("Client OCR init note:", e);
-    }
-  }
-}
-
-// Regex matching Indian vehicle plates (e.g. MH19BJ1234, DL08CA9876, MH 19 CV 9876)
+// Strict Indian License Plate Regex Extractor
 function extractIndianPlateRegex(rawText) {
   if (!rawText) return null;
 
-  // Clean characters
-  const upper = rawText.toUpperCase();
+  // Uppercase and clean special characters
+  const upper = rawText.toUpperCase().replace(/[\r\n\t]/g, ' ');
 
-  // Pattern 1: Strict state code + RTO + Series + 4 digits
-  const strictPattern = /([A-Z]{2}\s*[0-9]{1,2}\s*[A-Z]{1,3}\s*[0-9]{3,4})/g;
-  const matches = upper.match(strictPattern);
-  if (matches && matches.length > 0) {
-    return matches[0].replace(/[^A-Z0-9]/g, '');
+  // 1. Strict Match: State Code (2 letters) + RTO (1-2 digits) + Series (1-3 letters) + Number (4 digits)
+  // E.g. MH 19 BJ 1234, MH19BJ1234, DL 08 CA 9876, MH 12 AB 1234
+  const strictRegex = /\b([A-Z]{2})\s*([0-9]{1,2})\s*([A-Z]{1,3})\s*([0-9]{4})\b/g;
+  let match = strictRegex.exec(upper);
+  if (match) {
+    const state = match[1];
+    if (INDIAN_STATE_CODES.includes(state)) {
+      const rto = match[2].padStart(2, '0');
+      const series = match[3];
+      const num = match[4];
+      return `${state}${rto}${series}${num}`;
+    }
   }
 
-  // Pattern 2: Any 8 to 10 alphanumeric block starting with state code letters
-  const alphanumeric = upper.replace(/[^A-Z0-9]/g, '');
-  if (alphanumeric.length >= 8 && alphanumeric.length <= 11) {
-    return alphanumeric;
+  // 2. Compact Match without spaces
+  const compactRegex = /([A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{3,4})/g;
+  let compactMatches = upper.replace(/\s+/g, '').match(compactRegex);
+  if (compactMatches && compactMatches.length > 0) {
+    for (let candidate of compactMatches) {
+      const state = candidate.slice(0, 2);
+      if (INDIAN_STATE_CODES.includes(state) && candidate.length >= 8 && candidate.length <= 10) {
+        return candidate;
+      }
+    }
   }
 
-  return alphanumeric.length >= 4 ? alphanumeric : null;
+  // 3. Fallback: Search for MH 19 or any state code in the string
+  for (let state of INDIAN_STATE_CODES) {
+    const idx = upper.indexOf(state);
+    if (idx !== -1) {
+      const sub = upper.slice(idx).replace(/[^A-Z0-9]/g, '');
+      if (sub.length >= 8 && sub.length <= 10) {
+        return sub;
+      }
+    }
+  }
+
+  return null;
 }
 
 // 🎥 LIVE CAMERA SCANNER (Mobile & Laptop WebCam)
@@ -68,7 +81,7 @@ async function toggleLiveWebcamScanner() {
       showToast("Starting device camera...", "info");
       const constraints = {
         video: {
-          facingMode: { ideal: "environment" }, // Prefer back camera on mobile
+          facingMode: { ideal: "environment" }, // Prefer rear camera on mobile
           width: { ideal: 1280 },
           height: { ideal: 720 }
         }
@@ -96,7 +109,7 @@ async function toggleLiveWebcamScanner() {
   }
 }
 
-// 📸 CAPTURE FRAME FROM CAMERA AND RUN DUAL OCR (Client + Server)
+// 📸 CAPTURE CENTER REGION OF INTEREST (ROI) & RUN OCR
 async function captureAndScanPlate() {
   const video = document.getElementById('liveWebcamVideo');
   const canvas = document.getElementById('liveWebcamCanvas');
@@ -113,74 +126,79 @@ async function captureAndScanPlate() {
   }
 
   try {
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
+    const vW = video.videoWidth || 1280;
+    const vH = video.videoHeight || 720;
+
+    // Crop ONLY the central 60% width and 35% height where the laser viewfinder box is
+    const cropW = Math.round(vW * 0.65);
+    const cropH = Math.round(vH * 0.35);
+    const startX = Math.round((vW - cropW) / 2);
+    const startY = Math.round((vH - cropH) / 2);
+
+    canvas.width = cropW;
+    canvas.height = cropH;
     const ctx = canvas.getContext('2d');
     
-    // Draw raw image
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // Draw cropped center box
+    ctx.drawImage(video, startX, startY, cropW, cropH, 0, 0, cropW, cropH);
+
+    // Apply High-Contrast Grayscale Preprocessing on Canvas
+    const imgData = ctx.getImageData(0, 0, cropW, cropH);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const avg = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114);
+      // High contrast thresholding
+      const val = avg > 120 ? Math.min(255, avg * 1.2) : Math.max(0, avg * 0.7);
+      d[i] = val;
+      d[i + 1] = val;
+      d[i + 2] = val;
+    }
+    ctx.putImageData(imgData, 0, 0);
 
     let detectedPlate = "";
 
-    // 1. Run Client-Side Tesseract.js OCR
+    // 1. Run Client-Side Tesseract OCR on Cropped ROI
     if (window.Tesseract) {
       try {
-        showToast("Analyzing license plate characters...", "info");
+        showToast("Processing number plate characters...", "info");
         const ocrResult = await Tesseract.recognize(canvas, 'eng', {
           tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 '
         });
         const clientText = ocrResult.data.text;
-        console.log("[Client OCR Raw Output]:", clientText);
+        console.log("[ROI OCR Raw Output]:", clientText);
         detectedPlate = extractIndianPlateRegex(clientText);
       } catch (e) {
-        console.warn("Client OCR fallback to server:", e);
+        console.warn("Client OCR pass:", e);
       }
     }
 
-    // 2. Transmit to Server API
-    canvas.toBlob(async (blob) => {
-      const formData = new FormData();
-      if (blob) formData.append('file', blob, 'capture.jpg');
-      formData.append('lot_id', window.AppState.currentLotId || 1);
-      formData.append('gate_type', 'entry');
-      formData.append('vehicle_type', 'car');
-      if (detectedPlate) {
-        formData.append('plate_override', detectedPlate);
+    if (!detectedPlate) {
+      // If OCR couldn't extract clean pattern, check manual override or prompt user
+      const manualInput = document.getElementById('manualPlateInput')?.value.trim();
+      if (manualInput) {
+        detectedPlate = manualInput;
       }
+    }
 
-      try {
-        const res = await fetch('/api/anpr/scan-image', {
-          method: 'POST',
-          body: formData
-        });
-
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.detail || "Plate not detected. Please hold plate closer or enter manually.");
-        }
-
-        handleGateVisualUpdate({
-          plate_number: data.plate_number,
-          formatted_plate: data.plate_number,
-          barrier_open: data.barrier_open,
-          action: data.action,
-          message: data.message
-        });
-
-        showToast(data.message, data.barrier_open ? "success" : "warning");
-        loadGateLogs();
-      } catch (err) {
-        showToast(err.message, "error");
-      } finally {
-        if (captureBtn) {
-          captureBtn.disabled = false;
-          captureBtn.innerHTML = `<i class="fa-solid fa-bolt mr-1.5"></i><span>Scan Plate Now</span>`;
-        }
+    if (!detectedPlate) {
+      showToast("No clear number plate found in frame. Please align plate inside the box or enter plate below.", "warning");
+      if (captureBtn) {
+        captureBtn.disabled = false;
+        captureBtn.innerHTML = `<i class="fa-solid fa-bolt mr-1.5"></i><span>Scan Plate Now</span>`;
       }
-    }, 'image/jpeg', 0.92);
+      return;
+    }
+
+    // Format for display (e.g. MH 19 BJ 1234)
+    const formatted = formatPlateText(detectedPlate);
+    showToast(`Detected Plate: ${formatted}`, "success");
+
+    // Execute Gate Action
+    await executeGateAction(detectedPlate, "entry", "car");
 
   } catch (err) {
     showToast("Scan error: " + err.message, "error");
+  } finally {
     if (captureBtn) {
       captureBtn.disabled = false;
       captureBtn.innerHTML = `<i class="fa-solid fa-bolt mr-1.5"></i><span>Scan Plate Now</span>`;
@@ -188,7 +206,17 @@ async function captureAndScanPlate() {
   }
 }
 
-// 📁 PROCESS IMAGE UPLOAD WITH DUAL OCR
+// Format Plate: MH19BJ1234 -> MH 19 BJ 1234
+function formatPlateText(plate) {
+  if (!plate) return "";
+  const clean = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (clean.length >= 9) {
+    return `${clean.slice(0, 2)} ${clean.slice(2, 4)} ${clean.slice(4, -4)} ${clean.slice(-4)}`;
+  }
+  return clean;
+}
+
+// 📁 PROCESS IMAGE UPLOAD WITH ROI AND DUAL OCR
 async function processImageANPR() {
   const fileInput = document.getElementById('anprImageUpload');
   if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
@@ -197,67 +225,42 @@ async function processImageANPR() {
   }
 
   const file = fileInput.files[0];
-  showToast("Scanning vehicle image with Dual OCR...", "info");
+  showToast("Scanning vehicle image with ANPR OCR...", "info");
 
   let clientDetected = null;
 
-  // Run Client-Side OCR first
   if (window.Tesseract) {
     try {
       const ocrResult = await Tesseract.recognize(file, 'eng');
       clientDetected = extractIndianPlateRegex(ocrResult.data.text);
-      console.log("[Client File OCR]:", ocrResult.data.text, "Extracted:", clientDetected);
+      console.log("[Uploaded Image OCR Raw]:", ocrResult.data.text, "Cleaned:", clientDetected);
     } catch (e) {
       console.warn("Client file OCR pass:", e);
     }
   }
 
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('lot_id', window.AppState.currentLotId || 1);
-  formData.append('gate_type', 'entry');
-  formData.append('vehicle_type', 'car');
-  if (clientDetected) {
-    formData.append('plate_override', clientDetected);
+  if (!clientDetected) {
+    const manualInput = document.getElementById('manualPlateInput')?.value.trim();
+    if (manualInput) clientDetected = manualInput;
   }
 
-  try {
-    const res = await fetch('/api/anpr/scan-image', {
-      method: 'POST',
-      body: formData
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.detail || "Could not recognize plate. Please ensure plate is clearly visible.");
-    }
-
-    handleGateVisualUpdate({
-      plate_number: data.plate_number,
-      formatted_plate: data.plate_number,
-      barrier_open: data.barrier_open,
-      action: data.action,
-      message: data.message
-    });
-
-    showToast(data.message, data.barrier_open ? "success" : "warning");
-    loadGateLogs();
-  } catch (err) {
-    showToast(err.message, "error");
+  if (!clientDetected) {
+    showToast("Could not recognize plate format (e.g. MH 19 XX 1234). Please use manual trigger below.", "warning");
+    return;
   }
+
+  await executeGateAction(clientDetected, "entry", "car");
 }
 
-// ⌨️ DIRECT SIMULATION TRIGGER
-async function triggerSimulatedGate(gateType) {
-  const input = document.getElementById('manualPlateInput');
-  const plate = input?.value.trim() || (gateType === 'entry' ? 'MH19CV9876' : 'MH19BJ1234');
+// 🚀 EXECUTE GATE ACTION ON BACKEND
+async function executeGateAction(plateNumber, gateType = "entry", vehicleType = "car") {
   const lotId = window.AppState.currentLotId || 1;
 
   const payload = {
     lot_id: lotId,
     gate_type: gateType,
-    plate_number: plate,
-    vehicle_type: 'car'
+    plate_number: plateNumber,
+    vehicle_type: vehicleType
   };
 
   try {
@@ -274,7 +277,7 @@ async function triggerSimulatedGate(gateType) {
 
     handleGateVisualUpdate({
       plate_number: data.plate_number,
-      formatted_plate: data.plate_number,
+      formatted_plate: formatPlateText(data.plate_number),
       barrier_open: data.barrier_open,
       action: data.action,
       message: data.message
@@ -285,6 +288,13 @@ async function triggerSimulatedGate(gateType) {
   } catch (err) {
     showToast(err.message, "error");
   }
+}
+
+// ⌨️ DIRECT SIMULATION TRIGGER
+async function triggerSimulatedGate(gateType) {
+  const input = document.getElementById('manualPlateInput');
+  const plate = input?.value.trim() || (gateType === 'entry' ? 'MH19CV9876' : 'MH19BJ1234');
+  await executeGateAction(plate, gateType, "car");
 }
 
 // 🚧 BARRIER ARM ANIMATION & GATE STATUS UPDATE
@@ -346,12 +356,13 @@ function renderGateLogs(logs) {
       : `<span class="bg-amber-500/20 text-amber-400 text-[9px] font-extrabold px-2 py-0.5 rounded-md border border-amber-500/30"><i class="fa-solid fa-arrow-right-from-bracket mr-1"></i>EXIT</span>`;
 
     const timeStr = new Date(lg.timestamp).toLocaleTimeString();
+    const formattedPlate = formatPlateText(lg.plate_number);
 
     return `
       <div class="p-3 rounded-2xl bg-slate-900/70 border border-slate-800 flex items-center justify-between text-xs space-x-2 shadow-inner">
         <div class="space-y-0.5">
           <div class="flex items-center space-x-2">
-            <span class="font-extrabold mono-font text-white">${lg.plate_number}</span>
+            <span class="font-extrabold mono-font text-white">${formattedPlate}</span>
             ${gateBadge}
           </div>
           <p class="text-[11px] text-slate-400">${lg.message || lg.action_taken}</p>
