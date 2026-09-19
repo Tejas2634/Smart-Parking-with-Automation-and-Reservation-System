@@ -299,6 +299,30 @@ def get_gate_logs(lot_id: Optional[int] = None, limit: int = 30, db: Session = D
         query = query.filter(models.GateLog.lot_id == lot_id)
     return query.order_by(models.GateLog.id.desc()).limit(limit).all()
 
+# 6. DOWNLOAD PROJECT ZIP
+@app.get("/api/download/zip")
+def download_project_zip():
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    zip_path = os.path.join(base_dir, "smart_parking_system.zip")
+    if not os.path.exists(zip_path):
+        import zipfile
+        exclude_dirs = {'.git', '__pycache__', '.pytest_cache', '.idea', '.vscode'}
+        exclude_files = {'cloudflared.exe', 'smart_parking_system.zip'}
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(base_dir):
+                dirs[:] = [d for d in dirs if d not in exclude_dirs]
+                for file in files:
+                    if file in exclude_files or file.endswith('.pyc'):
+                        continue
+                    full_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(full_path, base_dir)
+                    zf.write(full_path, os.path.join('smart_parking_system', rel_path))
+    return FileResponse(
+        zip_path,
+        media_type="application/zip",
+        filename="smart_parking_system.zip"
+    )
+
 # WEBSOCKET FOR REAL-TIME SYNC
 @app.websocket("/ws/live")
 async def websocket_endpoint(websocket: WebSocket):

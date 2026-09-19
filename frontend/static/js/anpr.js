@@ -297,6 +297,27 @@ async function triggerSimulatedGate(gateType) {
   await executeGateAction(plate, gateType, "car");
 }
 
+// ⚡ 1-CLICK INTERACTIVE TEST PLATE SIMULATOR (Indian MH 19 Registration Numbers)
+async function simulateTestPlateScan(plateNumber, vehicleType = 'car', gateType = 'entry') {
+  if (typeof playAudioFx === 'function') playAudioFx('click');
+
+  const plateInput = document.getElementById('manualPlateInput');
+  if (plateInput) plateInput.value = plateNumber;
+
+  const plateEl = document.getElementById('lastScannedPlate');
+  if (plateEl) {
+    plateEl.innerText = "SCANNING...";
+    plateEl.classList.add('text-amber-300', 'animate-pulse');
+  }
+
+  // Visual simulation delay
+  setTimeout(async () => {
+    if (typeof playAudioFx === 'function') playAudioFx('scan_success');
+    if (plateEl) plateEl.classList.remove('text-amber-300', 'animate-pulse');
+    await executeGateAction(plateNumber, gateType, vehicleType);
+  }, 400);
+}
+
 // 🚧 BARRIER ARM ANIMATION & GATE STATUS UPDATE
 function handleGateVisualUpdate(event) {
   const plateEl = document.getElementById('lastScannedPlate');
@@ -308,6 +329,7 @@ function handleGateVisualUpdate(event) {
   if (statusEl) statusEl.innerText = event.action;
 
   if (event.barrier_open) {
+    if (typeof playAudioFx === 'function') playAudioFx('gate_open');
     if (barrierArm) barrierArm.classList.add('open');
     if (badge) {
       badge.className = 'bg-emerald-500/20 text-emerald-400 text-xs font-extrabold px-3.5 py-1 rounded-full border border-emerald-500/30 flex items-center space-x-1.5';

@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initWebSocket();
   initLotSelector();
   initUserRole();
+  initSoundToggle();
 
   // Load initial tab based on role
   const savedRole = sessionStorage.getItem('smartpark_role') || 'user';
@@ -370,4 +371,195 @@ function handleLiveWebSocketEvent(data) {
     if (window.AppState.currentTab === 'slotsTab') loadCurrentSlots();
     if (window.AppState.currentTab === 'adminTab') loadAdminAnalytics();
   }
+}
+
+// =========================================================================
+// 🔊 INTERACTIVE WEB AUDIO API SYNTHESIZER (No External Files Required)
+// =========================================================================
+let audioCtx = null;
+let soundFxEnabled = localStorage.getItem('smartpark_sound_enabled') !== 'false';
+
+function getAudioContext() {
+  if (!audioCtx) {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) {
+      audioCtx = new AudioContext();
+    }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  return audioCtx;
+}
+
+function initSoundToggle() {
+  updateSoundToggleButton();
+}
+
+function toggleSoundFx() {
+  soundFxEnabled = !soundFxEnabled;
+  localStorage.setItem('smartpark_sound_enabled', soundFxEnabled);
+  updateSoundToggleButton();
+  if (soundFxEnabled) {
+    playAudioFx('click');
+    showToast('Sound Effects: Enabled 🔊', 'info');
+  } else {
+    showToast('Sound Effects: Muted 🔇', 'info');
+  }
+}
+
+function updateSoundToggleButton() {
+  const btn = document.getElementById('soundToggleBtn');
+  if (btn) {
+    btn.innerHTML = soundFxEnabled 
+      ? '<i class="fa-solid fa-volume-high text-emerald-400"></i><span class="hidden sm:inline text-[11px] font-bold text-slate-300">Sound ON</span>'
+      : '<i class="fa-solid fa-volume-xmark text-slate-500"></i><span class="hidden sm:inline text-[11px] font-bold text-slate-500">Muted</span>';
+  }
+}
+
+function playAudioFx(type) {
+  if (!soundFxEnabled) return;
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    if (type === 'click') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(540, now);
+      osc.frequency.exponentialRampToValueAtTime(320, now + 0.04);
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.04);
+    } else if (type === 'scan_success') {
+      [880, 1320, 1760].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + i * 0.06);
+        gain.gain.setValueAtTime(0.12, now + i * 0.06);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.1);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.06);
+        osc.stop(now + i * 0.06 + 0.1);
+      });
+    } else if (type === 'book_success') {
+      const notes = [523.25, 659.25, 783.99, 1046.50];
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now + i * 0.07);
+        gain.gain.setValueAtTime(0.15, now + i * 0.07);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.07);
+        osc.stop(now + i * 0.07 + 0.35);
+      });
+    } else if (type === 'gate_open') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.22);
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.25);
+    } else if (type === 'error') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(160, now);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.16);
+    }
+  } catch (e) {
+    console.warn("Audio FX error", e);
+  }
+}
+
+// =========================================================================
+// 🎉 INTERACTIVE CONFETTI CELEBRATION PHYSICS
+// =========================================================================
+function triggerConfetti() {
+  const canvas = document.createElement('canvas');
+  canvas.id = 'confettiCanvas';
+  canvas.style.position = 'fixed';
+  canvas.style.top = '0';
+  canvas.style.left = '0';
+  canvas.style.width = '100vw';
+  canvas.style.height = '100vh';
+  canvas.style.pointerEvents = 'none';
+  canvas.style.zIndex = '9999';
+  document.body.appendChild(canvas);
+
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const particles = [];
+  const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#38bdf8', '#ffffff'];
+
+  for (let i = 0; i < 90; i++) {
+    particles.push({
+      x: canvas.width / 2 + (Math.random() - 0.5) * 250,
+      y: canvas.height / 2 - 120,
+      vx: (Math.random() - 0.5) * 14,
+      vy: (Math.random() - 1.2) * 13 - 3,
+      size: Math.random() * 8 + 4,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rotation: Math.random() * 360,
+      rotationSpeed: (Math.random() - 0.5) * 10,
+      alpha: 1,
+      gravity: 0.32
+    });
+  }
+
+  let animationFrame;
+  function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let alive = false;
+
+    particles.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += p.gravity;
+      p.rotation += p.rotationSpeed;
+      p.alpha -= 0.009;
+
+      if (p.alpha > 0) {
+        alive = true;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, p.alpha);
+        ctx.translate(p.x, p.y);
+        ctx.rotate((p.rotation * Math.PI) / 180);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+        ctx.restore();
+      }
+    });
+
+    if (alive) {
+      animationFrame = requestAnimationFrame(animate);
+    } else {
+      cancelAnimationFrame(animationFrame);
+      canvas.remove();
+    }
+  }
+
+  animate();
 }

@@ -29,6 +29,7 @@ function initPlateAutoFormatter() {
 
 // Quick Duration Pills (1h, 2h, 4h, 8h)
 function setQuickDuration(hours) {
+  if (typeof playAudioFx === 'function') playAudioFx('click');
   const slider = document.getElementById('bookingDuration');
   if (slider) {
     slider.value = hours;
@@ -57,6 +58,8 @@ function updateBookingEstimation() {
 
 async function handlePreBooking(e) {
   e.preventDefault();
+  if (typeof playAudioFx === 'function') playAudioFx('click');
+
   const submitBtn = document.getElementById('submitBookingBtn');
   if (submitBtn) {
     submitBtn.disabled = true;
@@ -97,10 +100,14 @@ async function handlePreBooking(e) {
       throw new Error(data.detail || 'Failed to complete booking');
     }
 
+    if (typeof playAudioFx === 'function') playAudioFx('book_success');
+    if (typeof triggerConfetti === 'function') triggerConfetti();
+
     showToast(`Slot Reserved Successfully! Pass: ${data.booking_code}`, 'success');
     openQRModal(data);
     window.AppState.selectedSlotId = null;
   } catch (err) {
+    if (typeof playAudioFx === 'function') playAudioFx('error');
     showToast(err.message, 'error');
   } finally {
     if (submitBtn) {
@@ -125,15 +132,22 @@ function openQRModal(booking) {
   if (plate) plate.innerText = booking.vehicle_number;
   if (amount) amount.innerText = `₹${booking.total_amount.toFixed(2)}`;
 
-  if (modal) modal.classList.remove('hidden');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
 }
 
 function closeQRModal() {
   const modal = document.getElementById('qrModal');
-  if (modal) modal.classList.add('hidden');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
 }
 
 function printPass() {
+  if (typeof playAudioFx === 'function') playAudioFx('click');
   window.print();
 }
 

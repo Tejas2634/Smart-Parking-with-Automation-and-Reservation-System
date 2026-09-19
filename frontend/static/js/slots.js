@@ -117,6 +117,7 @@ function updateSlotStats() {
 }
 
 function selectSlotToBook(slotId, slotNumber, vehicleType) {
+  if (typeof playAudioFx === 'function') playAudioFx('click');
   window.AppState.selectedSlotId = slotId;
 
   // Sync to pre-booking form
@@ -125,8 +126,45 @@ function selectSlotToBook(slotId, slotNumber, vehicleType) {
     if (r.value === vehicleType) r.checked = true;
   });
 
-  updateBookingEstimation();
+  if (typeof updateBookingEstimation === 'function') updateBookingEstimation();
   renderSlots();
   switchTab('bookingTab');
   showToast(`Selected Bay ${slotNumber}! Pre-booking details updated.`, 'success');
+}
+
+// 🎯 Interactive Auto-Pilot: Automatically finds & highlights the nearest free bay
+function autoFindBestSlot() {
+  if (typeof playAudioFx === 'function') playAudioFx('click');
+  
+  // Filter by current vehicle filter or default to available
+  const availableSlots = allSlots.filter(s => {
+    if (s.status !== 'available') return false;
+    if (currentFilter !== 'all') return s.vehicle_type === currentFilter;
+    return true;
+  });
+
+  if (availableSlots.length === 0) {
+    if (typeof playAudioFx === 'function') playAudioFx('error');
+    showToast(`No available free bays found for "${currentFilter}" filter!`, 'warning');
+    return;
+  }
+
+  // Pick optimal closest bay
+  const bestSlot = availableSlots[0];
+  window.AppState.selectedSlotId = bestSlot.id;
+  renderSlots();
+
+  if (typeof playAudioFx === 'function') playAudioFx('scan_success');
+  
+  // Visual pulse animation on the selected card
+  const slotCards = document.querySelectorAll('.parking-bay-card');
+  slotCards.forEach(c => {
+    if (c.innerHTML.includes(bestSlot.slot_number)) {
+      c.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      c.classList.add('ring-4', 'ring-emerald-400', 'animate-bounce');
+      setTimeout(() => c.classList.remove('animate-bounce'), 1200);
+    }
+  });
+
+  showToast(`🎯 Best Bay Found: ${bestSlot.slot_number} (${bestSlot.vehicle_type.toUpperCase()} - ₹${bestSlot.vehicle_type === 'car' ? 50 : 30}/h)! Click to Reserve.`, 'success');
 }
